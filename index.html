@@ -1,0 +1,752 @@
+<title>Talking Voder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: piano roll of key presses on top (the score a 1939 operator played), phrase box, live keys, sources. Sibling of the Dudley Vocoder. */
+  :root {
+    --bg: #e9eef0; --panel: #f6f9fa; --ink: #13222b; --mute: #55666f; --line: #c3d0d6; --accent: #0a5f86; --accent-ink: #ffffff; --lamp: #b25e00; --hiss: #8a4b00;
+    --f-display: "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
+    --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0d1519; --panel: #141f25; --ink: #dbe6ea; --mute: #8ea3ac; --line: #28383f; --accent: #f0b447; --accent-ink: #1a1203; --lamp: #f0b447; --hiss: #6fb6d4; color-scheme: dark; } }
+  :root[data-theme="dark"] { --bg: #0d1519; --panel: #141f25; --ink: #dbe6ea; --mute: #8ea3ac; --line: #28383f; --accent: #f0b447; --accent-ink: #1a1203; --lamp: #f0b447; --hiss: #6fb6d4; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); padding-block: 20px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  main { max-width: 980px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font: 700 clamp(34px, 7vw, 54px)/0.95 var(--f-display); margin: 0; text-transform: uppercase; text-wrap: balance; }
+  h2 { font: 600 13px/1 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); margin: 0 0 12px; }
+  .sub { color: var(--mute); margin: 8px 0 0; max-width: 62ch; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-width: 0; }
+  .scope { padding: 0; overflow: hidden; }
+  .scope-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); font: 12px var(--f-mono); color: var(--mute); }
+  .scope-head b { color: var(--ink); font-weight: 500; }
+  .roll { display: flex; }
+  .roll canvas { display: block; flex: none; touch-action: pan-x; }
+  #rl { width: 64px; border-right: 1px solid var(--line); }
+  #rs { overflow-x: auto; flex: 1; min-width: 0; }
+  #rc { cursor: crosshair; touch-action: none; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button, select, input[type=text], input[type=file]::file-selector-button { font: 500 14px var(--f-body); border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 4px; padding: 9px 14px; }
+  button, select, input[type=file]::file-selector-button { cursor: pointer; }
+  button:hover, select:hover, input[type=text]:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button[aria-pressed=true] { outline: 2px solid var(--accent); outline-offset: 1px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input[type=text] { width: 100%; font: 400 16px var(--f-body); }
+  input.mono { font: 400 13px var(--f-mono); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 24px; margin-top: 14px; }
+  label.ctl, .ctl { display: grid; gap: 4px; font-size: 13px; color: var(--mute); }
+  .ctl .v { font: 13px var(--f-mono); color: var(--ink); display: flex; justify-content: space-between; gap: 8px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .note { font-size: 12.5px; color: var(--mute); }
+  .flag { font: 11px var(--f-mono); color: var(--lamp); border: 1px solid var(--lamp); border-radius: 3px; padding: 1px 5px; margin-left: 6px; white-space: nowrap; }
+  #status { font: 12px var(--f-mono); color: var(--mute); min-height: 18px; }
+  .keys { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; align-items: end; touch-action: none; }
+  .keys.stops { grid-template-columns: repeat(3, minmax(0, 90px)); margin-top: 10px; }
+  .key { height: 130px; padding: 8px 2px; border-radius: 4px 4px 18px 18px; clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%); display: grid; align-content: space-between; justify-items: center;
+    background: color-mix(in srgb, var(--mute) 24%, var(--panel)); color: var(--ink); font: 11px var(--f-mono); user-select: none; -webkit-user-select: none; touch-action: none; }
+  .keys.stops .key { height: 70px; }
+  .key b { font: 600 18px var(--f-display); }
+  .key.on { background: var(--accent); color: var(--accent-ink); }
+  .pedal { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-top: 14px; }
+  .pedal input[type=range] { width: min(100%, 260px); }
+  ul.cites { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: 14px; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .two > div { min-width: 0; }
+  cite { font-style: normal; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<main>
+  <header>
+    <h1>Talking Voder</h1>
+    <p class="sub">The 1939 Bell Labs speaking machine as a score. Type a phrase and it becomes key presses: ten band keys, three stop-consonant keys, a buzz or hiss switch and a pitch line. Edit any cell, then play it.</p>
+  </header>
+
+  <section class="panel scope" aria-label="Key score">
+    <div class="scope-head"><span><b id="hdTxt">score</b></span><span id="hdInfo"></span></div>
+    <div class="roll"><canvas id="rl" aria-hidden="true"></canvas><div id="rs"><canvas id="rc" role="img" aria-label="Piano roll of key presses over time. Click or drag cells to toggle them."></canvas></div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Phrase</h2>
+    <label class="ctl"><span>Type something</span><input id="txt" type="text" value="Hello, we see the sea." autocomplete="off" spellcheck="false"></label>
+    <label class="ctl" style="margin-top:12px"><span>Phonemes (ARPAbet, editable)<span class="flag">crude rules</span></span><input id="ph" class="mono" type="text" autocomplete="off" spellcheck="false"></label>
+    <div class="grid">
+      <label class="ctl"><span class="v"><span>Pitch pedal (base)</span><span id="vF0">110 Hz</span></span><input id="f0" type="range" min="70" max="220" step="1" value="110"></label>
+      <label class="ctl"><span class="v"><span>Speed</span><span id="vSp">1.0x</span></span><input id="sp" type="range" min="0.6" max="2" step="0.1" value="1"></label>
+      <label class="ctl"><span>Intonation</span><select id="into"><option value="statement">Statement (falls)</option><option value="question">Question (rises)</option><option value="flat">Flat</option></select></label>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button id="speak" class="primary">Speak</button>
+      <button id="stop">Stop</button>
+      <!--DL--><button id="dl">Save WAV</button><!--/DL-->
+      <span id="status" role="status"></span>
+    </div>
+    <p class="note" style="margin:10px 0 0">Roll rows: ten band keys (top is 2650 to 2950 Hz), then the stop keys P/B, T/D, K/G, then the wrist bar (amber buzz, blue hiss) and the pitch line. Drag across cells to paint or erase.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Play it yourself</h2>
+    <p class="note" style="margin:0 0 12px">Ten band keys, three stop keys, wrist bar, pedal. Computer keys A S D F G H J K L ; for the bands, Z X C for the stops, hold Space for hiss.</p>
+    <div class="keys" id="keys" role="group" aria-label="Ten band keys"></div>
+    <div class="keys stops" id="stopkeys" role="group" aria-label="Three stop keys"></div>
+    <div class="pedal">
+      <button id="wrist" aria-pressed="false">Wrist bar: buzz</button>
+      <label class="ctl" style="min-width:220px"><span class="v"><span>Pitch pedal</span><span id="vPed">110 Hz</span></span><input id="pedal" type="range" min="70" max="250" step="1" value="110"></label>
+    </div>
+  </section>
+
+  <section class="panel two">
+    <div>
+      <h2>Checked and not checked</h2>
+      <p class="note" style="margin:0 0 8px">From the CCRMA page on the Voder: ten fingers set the band gains, three further keys gave transient excitation of selected filters for stop consonants, a wrist bar chose buzz or hiss, a foot pedal set pitch.</p>
+      <p class="note" style="margin:0">Not documented there, so assumed here: which filters each stop key excites, the formant values, the letter rules, all timings. The Voder could not buzz and hiss together, so voiced fricatives are buzz only. Nobody has listened to this.</p>
+    </div>
+    <div>
+      <h2>Measured</h2>
+      <p class="note" style="margin:0">Each band key sounds in its own band. Stop bursts land on their cell within a few milliseconds and the T burst is brighter than K, which is brighter than P. The same phrase always makes the same score and the same audio.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Sources</h2>
+    <ul class="cites">
+      <li><cite>Smith, J. O. Voder. In <i>Spectral Audio Signal Processing</i>, CCRMA, Stanford University.</cite> https://ccrma.stanford.edu/~jos/sasp/Voder.html. Key, stop key, wrist bar and pedal description.</li>
+      <li><cite>Dudley, H. (1940). The carrier nature of speech. <i>Bell System Technical Journal</i>, 19(4), 495&ndash;515.</cite> Ten bands, buzz and hiss sources.</li>
+      <li><cite>Peterson, G. E. &amp; Barney, H. L. (1952). Control methods used in a study of the vowels. <i>Journal of the Acoustical Society of America</i>, 24(2), 175&ndash;184.</cite> Formant values here are typed from memory and not checked.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+/* Dudley Vocoder: pure functions (no Web Audio). Works in Node and the browser. */
+(function (g) {
+  "use strict";
+
+  // Ten analyzer bands as pictured in Dudley, BSTJ 19(4) 1940, Fig. 10 caption:
+  // "ten frequency bands of 300 cycles width except that the lowest one extends from 0 to 250 cycles".
+  const DUDLEY_EDGES = [0, 250, 550, 850, 1150, 1450, 1750, 2050, 2350, 2650, 2950];
+
+  function dudleyBands() {
+    const out = [];
+    for (let i = 0; i < 10; i++) out.push({ lo: DUDLEY_EDGES[i], hi: DUDLEY_EDGES[i + 1] });
+    return out;
+  }
+
+  // Glasberg & Moore (1990) ERB-rate scale.
+  const erbRate = (f) => 21.4 * Math.log10(1 + 0.00437 * f);
+  const erbInv = (e) => (Math.pow(10, e / 21.4) - 1) / 0.00437;
+
+  function erbBands(n, lo, hi) {
+    const a = erbRate(lo), b = erbRate(hi), out = [];
+    for (let i = 0; i < n; i++) out.push({ lo: erbInv(a + ((b - a) * i) / n), hi: erbInv(a + ((b - a) * (i + 1)) / n) });
+    return out;
+  }
+
+  function median(a) {
+    const s = Array.from(a).sort((x, y) => x - y);
+    return s[s.length >> 1];
+  }
+
+  /**
+   * Frame-wise pitch and voicing estimate by normalized autocorrelation.
+   * x: Float32Array mono, sr: sample rate. Returns frames at 10 ms hop.
+   */
+  function trackPitch(x, sr, opt) {
+    opt = opt || {};
+    const fmin = opt.fmin || 70, fmax = opt.fmax || 400, vthr = opt.vthr || 0.5;
+    const d = Math.max(1, Math.round(sr / 11025)); // decimate to ~11 kHz with a box filter
+    const n = Math.floor(x.length / d), y = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let s = 0; for (let k = 0; k < d; k++) s += x[i * d + k]; y[i] = s / d; }
+    const fs = sr / d, hop = Math.round(0.01 * fs), win = Math.round(0.04 * fs);
+    const lmin = Math.floor(fs / fmax), lmax = Math.ceil(fs / fmin);
+    const nf = Math.max(2, Math.floor(n / hop));
+    const f0 = new Float32Array(nf), voiced = new Float32Array(nf), rms = new Float32Array(nf), conf = new Float32Array(nf);
+    let peak = 1e-9;
+    for (let f = 0; f < nf; f++) {
+      const s0 = f * hop - (win >> 1);
+      let e = 0;
+      for (let i = 0; i < win; i++) { const v = y[s0 + i] || 0; e += v * v; }
+      rms[f] = Math.sqrt(e / win); if (rms[f] > peak) peak = rms[f];
+    }
+    const r = new Float32Array(lmax + 2);
+    for (let f = 0; f < nf; f++) {
+      if (rms[f] < 0.03 * peak) continue;
+      const s0 = f * hop - (win >> 1);
+      let e0 = 0;
+      for (let i = 0; i < win; i++) { const v = y[s0 + i] || 0; e0 += v * v; }
+      let best = 0;
+      for (let l = lmin; l <= lmax + 1; l++) {
+        let c = 0, el = 0;
+        for (let i = 0; i < win; i++) { const a = y[s0 + i] || 0, b = y[s0 + i + l] || 0; c += a * b; el += b * b; }
+        r[l] = c / Math.sqrt(e0 * el + 1e-12);
+        if (r[l] > best) best = r[l];
+      }
+      // smallest lag that is a local maximum within 10% of the best: avoids octave-down errors
+      let lag = 0;
+      for (let l = lmin + 1; l <= lmax; l++) {
+        if (r[l] >= r[l - 1] && r[l] >= r[l + 1] && r[l] >= 0.9 * best) { lag = l; break; }
+      }
+      conf[f] = best;
+      if (lag && best >= vthr) {
+        const a = r[lag - 1], b = r[lag], c = r[lag + 1], den = a - 2 * b + c;
+        const off = den ? (0.5 * (a - c)) / den : 0;
+        f0[f] = fs / (lag + off);
+        voiced[f] = 1;
+      }
+    }
+    // drop isolated 1-frame voicing flips
+    for (let f = 1; f < nf - 1; f++) {
+      if (voiced[f] && !voiced[f - 1] && !voiced[f + 1]) { voiced[f] = 0; f0[f] = 0; }
+      else if (!voiced[f] && voiced[f - 1] && voiced[f + 1] && rms[f] >= 0.03 * peak) { voiced[f] = 1; f0[f] = (f0[f - 1] + f0[f + 1]) / 2; }
+    }
+    // median filter voiced f0, then fill unvoiced frames by holding the nearest voiced value
+    const sm = new Float32Array(nf);
+    for (let f = 0; f < nf; f++) {
+      if (!voiced[f]) continue;
+      const w = [];
+      for (let k = -2; k <= 2; k++) { const j = f + k; if (j >= 0 && j < nf && voiced[j]) w.push(f0[j]); }
+      sm[f] = median(w);
+    }
+    let last = 0;
+    for (let f = 0; f < nf; f++) { if (voiced[f]) last = sm[f]; else sm[f] = last; }
+    last = 0;
+    for (let f = nf - 1; f >= 0; f--) { if (voiced[f]) last = sm[f]; else if (!sm[f]) sm[f] = last; }
+    let med = 0, cnt = 0; for (let f = 0; f < nf; f++) if (voiced[f]) { med += sm[f]; cnt++; }
+    const fallback = cnt ? med / cnt : 110;
+    for (let f = 0; f < nf; f++) if (!sm[f]) sm[f] = fallback;
+    return { hop: hop / fs, f0: sm, voiced, rms, conf, medianF0: fallback, voicedShare: cnt / nf };
+  }
+
+  // 3-frame box smoothing of a 0/1 track so gates ramp over about 30 ms instead of clicking
+  function smoothTrack(v, passes) {
+    let a = Float32Array.from(v);
+    for (let p = 0; p < (passes || 1); p++) {
+      const b = new Float32Array(a.length);
+      for (let i = 0; i < a.length; i++) b[i] = ((a[i - 1] ?? a[i]) + a[i] + (a[i + 1] ?? a[i])) / 3;
+      a = b;
+    }
+    return a;
+  }
+
+  // Equalizer: ten faders sit at the centers of Dudley's ten bands. Gain at any frequency is interpolated in log-f, flat beyond the ends.
+  const EQ_CENTERS = [125, 400, 700, 1000, 1300, 1600, 1900, 2200, 2500, 2800];
+  function eqGainDb(db, f) {
+    if (!db) return 0;
+    if (f <= EQ_CENTERS[0]) return db[0];
+    if (f >= EQ_CENTERS[9]) return db[9];
+    let i = 0; while (f > EQ_CENTERS[i + 1]) i++;
+    const t = Math.log(f / EQ_CENTERS[i]) / Math.log(EQ_CENTERS[i + 1] / EQ_CENTERS[i]);
+    return db[i] + (db[i + 1] - db[i]) * t;
+  }
+
+  // Chord ratios for the modern external-carrier mode
+  const CHORDS = { power: [1, 1.5, 2, 3], minor7: [1, 1.1892, 1.4983, 1.7818], major7: [1, 1.2599, 1.4983, 1.8877], octaves: [0.5, 1, 2, 4] };
+
+  function wavEncode(samples, sr) {
+    const n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, samples[i])); v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
+    return buf;
+  }
+
+  g.VocoderCore = { DUDLEY_EDGES, dudleyBands, erbRate, erbInv, erbBands, trackPitch, smoothTrack, EQ_CENTERS, eqGainDb, CHORDS, wavEncode };
+  if (typeof module !== "undefined") module.exports = g.VocoderCore;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>
+/* Dudley Vocoder: Web Audio engine. Everything renders offline so playback, display and WAV export share one buffer. */
+(function (g) {
+  "use strict";
+  const C = g.VocoderCore;
+  const SR = 44100;
+
+  function bandFilter(ctx, band, qScale) {
+    const a = ctx.createBiquadFilter(), b = ctx.createBiquadFilter();
+    if (band.lo <= 0) {
+      a.type = b.type = "lowpass"; a.frequency.value = b.frequency.value = band.hi; a.Q.value = b.Q.value = 0.707;
+    } else {
+      const fc = Math.sqrt(band.lo * band.hi), q = (fc / (band.hi - band.lo)) * (qScale || 1);
+      a.type = b.type = "bandpass"; a.frequency.value = b.frequency.value = fc; a.Q.value = b.Q.value = q;
+    }
+    a.connect(b);
+    return { in: a, out: b };
+  }
+
+  // Full-wave rectifier, two-pole smoothing, scaled so a steady sine reads its amplitude.
+  function envelope(ctx, from, cutoff) {
+    const ws = ctx.createWaveShaper(); ws.curve = new Float32Array([1, 0, 1]);
+    const l1 = ctx.createBiquadFilter(), l2 = ctx.createBiquadFilter(), mk = ctx.createGain();
+    l1.type = l2.type = "lowpass"; l1.frequency.value = l2.frequency.value = cutoff; l1.Q.value = l2.Q.value = 0.707;
+    mk.gain.value = Math.PI / 2;
+    from.connect(ws); ws.connect(l1); l1.connect(l2); l2.connect(mk);
+    return mk;
+  }
+
+  function noiseBuffer(ctx, secs) {
+    const b = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * secs), ctx.sampleRate), d = b.getChannelData(0);
+    let s = 12345;
+    for (let i = 0; i < d.length; i++) { s = (s * 1664525 + 1013904223) >>> 0; d[i] = (s / 2147483648 - 1) * 0.9; }
+    return b;
+  }
+  function noiseSrc(ctx, buf) { const n = ctx.createBufferSource(); n.buffer = buf; n.loop = true; n.start(0); return n; }
+
+  function monoIn(ctx, buf) {
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const m = ctx.createGain(); m.channelCount = 1; m.channelCountMode = "explicit"; m.channelInterpretation = "speakers";
+    src.connect(m); src.start(0);
+    return m;
+  }
+
+  function offlineFor(buf) { return new OfflineAudioContext(1, Math.ceil(buf.duration * SR), SR); }
+
+  function normalize(d, peak) {
+    let m = 0; for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > m) m = a; }
+    if (m > 1e-9) { const k = peak / m; for (let i = 0; i < d.length; i++) d[i] *= k; }
+    return d;
+  }
+
+  /**
+   * cfg: { bands:[{lo,hi}], qScale, envCut, carrier:'buzz'|'chord'|'noise', hard:boolean,
+   *        semis, monotone, monoHz, chordRoot, chordType, hissLevel, sibilance }
+   * pitch: result of trackPitch for buf.
+   */
+  async function render(buf, pitch, cfg) {
+    const ctx = offlineFor(buf), dur = buf.duration;
+    const input = monoIn(ctx, buf);
+    const out = ctx.createGain(); out.gain.value = 1; out.connect(ctx.destination);
+    const nz = noiseBuffer(ctx, 2);
+    const shift = Math.pow(2, (cfg.semis || 0) / 12);
+    const nF = pitch.f0.length, T = nF * pitch.hop;
+    const f0c = new Float32Array(nF);
+    for (let i = 0; i < nF; i++) f0c[i] = Math.max(20, Math.min(ctx.sampleRate / 2.5, (cfg.monotone ? cfg.monoHz || 110 : pitch.f0[i]) * shift));
+    const vSrc = cfg.hard ? pitch.voiced : C.smoothTrack(pitch.voiced, 2);
+    const vc = Float32Array.from(vSrc), uc = Float32Array.from(vSrc, (v) => 1 - v);
+
+    const car = ctx.createGain(); car.gain.value = 1;
+    // White noise spreads its power over the whole spectrum; a buzz packs it into the passband. Scale the hiss to the passband.
+    const top = cfg.bands[cfg.bands.length - 1].hi, hissK = Math.sqrt(ctx.sampleRate / 2 / top);
+    if (cfg.carrier === "buzz") {
+      // pulse-like spectrum (amplitude 1/sqrt(n)), closer to a relaxation oscillator than a sawtooth
+      const H = 200, re = new Float32Array(H + 1), im = new Float32Array(H + 1);
+      for (let n = 1; n <= H; n++) im[n] = 1 / Math.sqrt(n);
+      const o = ctx.createOscillator(); o.setPeriodicWave(ctx.createPeriodicWave(re, im)); o.frequency.setValueCurveAtTime(f0c, 0, T); o.start(0);
+      const gv = ctx.createGain(); gv.gain.setValueCurveAtTime(vc, 0, T);
+      o.connect(gv); gv.connect(car);
+      const gu = ctx.createGain(); gu.gain.setValueCurveAtTime(uc, 0, T);
+      const k = ctx.createGain(); k.gain.value = (cfg.hissLevel == null ? 1 : cfg.hissLevel) * hissK;
+      noiseSrc(ctx, nz).connect(gu); gu.connect(k); k.connect(car);
+    } else if (cfg.carrier === "chord") {
+      const ratios = C.CHORDS[cfg.chordType || "minor7"], root = cfg.chordRoot || 130.81;
+      ratios.forEach((r, i) => {
+        [-1, 1].forEach((sg) => {
+          const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = root * r; o.detune.value = sg * (5 + i * 1.5); o.start(0);
+          const gn = ctx.createGain(); gn.gain.value = 0.5 / ratios.length; o.connect(gn); gn.connect(car);
+        });
+      });
+      const gu = ctx.createGain(); gu.gain.setValueCurveAtTime(uc, 0, T);
+      const k = ctx.createGain(); k.gain.value = (cfg.hissLevel == null ? 0.6 : cfg.hissLevel) * hissK;
+      noiseSrc(ctx, nz).connect(gu); gu.connect(k); k.connect(car);
+    } else {
+      noiseSrc(ctx, nz).connect(car);
+    }
+
+    cfg.bands.forEach((band) => {
+      const a = bandFilter(ctx, band, cfg.qScale), s = bandFilter(ctx, band, cfg.qScale);
+      input.connect(a.in);
+      const env = envelope(ctx, a.out, cfg.envCut);
+      const sg = ctx.createGain(); sg.gain.value = 0;
+      env.connect(sg.gain);
+      const eq = ctx.createGain(); eq.gain.value = Math.pow(10, C.eqGainDb(cfg.eqDb, Math.sqrt(Math.max(band.lo, 50) * band.hi)) / 20);
+      car.connect(s.in); s.out.connect(sg); sg.connect(eq); eq.connect(out);
+    });
+
+    if (cfg.sibilance > 0) {
+      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 5000; hp.Q.value = 0.707;
+      input.connect(hp);
+      const env = envelope(ctx, hp, 80);
+      const n = noiseSrc(ctx, nz), nh = ctx.createBiquadFilter(); nh.type = "highpass"; nh.frequency.value = 5000;
+      const sg = ctx.createGain(); sg.gain.value = 0; env.connect(sg.gain);
+      const lv = ctx.createGain(); lv.gain.value = cfg.sibilance * 3;
+      n.connect(nh); nh.connect(sg); sg.connect(lv); lv.connect(out);
+    }
+
+    const r = await ctx.startRendering();
+    const d = new Float32Array(r.getChannelData(0));
+    normalize(d, 0.89);
+    const ob = new AudioBuffer({ length: d.length, numberOfChannels: 1, sampleRate: SR });
+    ob.copyToChannel(d, 0);
+    return ob;
+  }
+
+  /** Channel envelopes at 100 Hz, for the display. Returns {n, frames, data[frame*n+band]}. */
+  async function envelopes(buf, cfg) {
+    const n = cfg.bands.length, len = Math.ceil(buf.duration * SR);
+    const ctx = new OfflineAudioContext(n, len, SR);
+    const input = monoIn(ctx, buf), merger = ctx.createChannelMerger(n);
+    cfg.bands.forEach((band, i) => {
+      const a = bandFilter(ctx, band, cfg.qScale); input.connect(a.in);
+      envelope(ctx, a.out, cfg.envCut).connect(merger, 0, i);
+    });
+    merger.connect(ctx.destination);
+    const r = await ctx.startRendering();
+    const hop = Math.round(SR / 100), frames = Math.floor(len / hop), data = new Float32Array(frames * n);
+    for (let b = 0; b < n; b++) {
+      const ch = r.getChannelData(b);
+      for (let f = 0; f < frames; f++) { let m = 0; for (let k = 0; k < hop; k += 4) m += Math.abs(ch[f * hop + k]); data[f * n + b] = m / (hop / 4); }
+    }
+    return { n, frames, data };
+  }
+
+  /** Synthetic speech-like phrase used as the default modulator ("see saw sue, ay-oh"). */
+  async function demo() {
+    const F = { i: [270, 2290, 3010], a: [730, 1090, 2440], u: [300, 870, 2240], e: [530, 1840, 2480], o: [570, 840, 2410] };
+    const segs = [["s", 0.2], ["v", "i", 0.42], ["s", 0.16], ["v", "a", 0.46], ["s", 0.16], ["v", "u", 0.42], ["x", 0.14], ["v", "e", 0.36], ["v", "o", 0.55], ["x", 0.3]];
+    const total = segs.reduce((t, s) => t + s[s.length - 1], 0);
+    const ctx = new OfflineAudioContext(1, Math.ceil(total * SR), SR);
+    const src = ctx.createOscillator(); src.type = "sawtooth";
+    const nF = 400, curve = new Float32Array(nF);
+    for (let i = 0; i < nF; i++) { const t = (i / nF) * total; curve[i] = 122 * (1 + 0.1 * Math.sin((2 * Math.PI * t) / 1.9)) - 9 * t; }
+    src.frequency.setValueCurveAtTime(curve, 0, total); src.start(0);
+    const vg = ctx.createGain(); vg.gain.value = 0; src.connect(vg);
+    const fm = [0, 1, 2].map((k) => { const b = ctx.createBiquadFilter(); b.type = "bandpass"; b.Q.value = [8, 10, 12][k]; b.frequency.value = 500; const g2 = ctx.createGain(); g2.gain.value = [1, 0.6, 0.3][k]; vg.connect(b); b.connect(g2); g2.connect(ctx.destination); return b; });
+    const nb = noiseBuffer(ctx, 1), nsrc = noiseSrc(ctx, nb), nbp = ctx.createBiquadFilter(); nbp.type = "bandpass"; nbp.frequency.value = 6200; nbp.Q.value = 1.2;
+    const fg = ctx.createGain(); fg.gain.value = 0; nsrc.connect(nbp); nbp.connect(fg); fg.connect(ctx.destination);
+    let t = 0;
+    segs.forEach((s) => {
+      const d = s[s.length - 1];
+      if (s[0] === "s") { fg.gain.setTargetAtTime(0.9, t, 0.01); fg.gain.setTargetAtTime(0, t + d - 0.03, 0.01); }
+      if (s[0] === "v") {
+        fm.forEach((b, k) => b.frequency.setTargetAtTime(F[s[1]][k], t, 0.03));
+        vg.gain.setTargetAtTime(0.5, t, 0.012); vg.gain.setTargetAtTime(0.0, t + d - 0.02, 0.012);
+      }
+      t += d;
+    });
+    const r = await ctx.startRendering();
+    const d = new Float32Array(r.getChannelData(0)); normalize(d, 0.7);
+    const ob = new AudioBuffer({ length: d.length, numberOfChannels: 1, sampleRate: SR }); ob.copyToChannel(d, 0);
+    return ob;
+  }
+
+  /** Live, hand-played synthesizer in the manner of the 1939 Voder: ten keys, a wrist bar (buzz or hiss), a pitch pedal. */
+  function voder(ctx, dest) {
+    const bands = C.dudleyBands(), master = ctx.createGain(), lim = ctx.createDynamicsCompressor();
+    master.gain.value = 0.5; lim.threshold.value = -12; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.12;
+    master.connect(lim); lim.connect(dest);
+    const BUZZ = 5; // the peak-normalized pulse wave is weak per band; bring one key of buzz up to the level of one key of hiss
+    const H = 200, re = new Float32Array(H + 1), im = new Float32Array(H + 1);
+    for (let n = 1; n <= H; n++) im[n] = 1 / Math.sqrt(n);
+    const osc = ctx.createOscillator(); osc.setPeriodicWave(ctx.createPeriodicWave(re, im)); osc.frequency.value = 110; osc.start();
+    const nz = noiseSrc(ctx, noiseBuffer(ctx, 2)), hissK = Math.sqrt(ctx.sampleRate / 2 / 2950);
+    const buzzG = ctx.createGain(), hissG = ctx.createGain(), car = ctx.createGain();
+    buzzG.gain.value = BUZZ; hissG.gain.value = 0;
+    osc.connect(buzzG); nz.connect(hissG); buzzG.connect(car); hissG.connect(car);
+    const keys = bands.map((b) => {
+      const f = bandFilter(ctx, b, 1), kg = ctx.createGain(), eq = ctx.createGain();
+      kg.gain.value = 0; car.connect(f.in); f.out.connect(kg); kg.connect(eq); eq.connect(master);
+      return { kg, eq };
+    });
+    const T = (t) => (t == null ? ctx.currentTime : t);
+    return {
+      keys: keys.length, master,
+      setKey(i, on, t) { keys[i].kg.gain.setTargetAtTime(on ? 1 : 0, T(t), 0.012); },
+      setSource(mode, t) { buzzG.gain.setTargetAtTime(mode === "hiss" ? 0 : BUZZ, T(t), 0.006); hissG.gain.setTargetAtTime(mode === "hiss" ? hissK : 0, T(t), 0.006); },
+      setPitch(hz, t) { osc.frequency.setTargetAtTime(hz, T(t), 0.03); },
+      setEq(db) { keys.forEach((k, i) => { k.eq.gain.value = Math.pow(10, db[i] / 20); }); }
+    };
+  }
+
+  // Which bands each stop key excites. The 1939 Voder had three stop keys that gave "transient excitation of selected filters"
+  // (CCRMA); WHICH filters is not documented there, so these sets are this build's assumption.
+  const STOP_SETS = [[1, 2, 3], [6, 7, 8, 9], [3, 4, 5, 6]]; // P/B, T/D, K/G
+
+  /** Talking Voder engine: ten band keys, three stop keys, wrist bar, pedal. Every method takes an optional time for offline scoring. */
+  function voderTV(ctx, dest) {
+    const bands = C.dudleyBands(), master = ctx.createGain(), lim = ctx.createDynamicsCompressor();
+    master.gain.value = 0.5; lim.threshold.value = -12; lim.knee.value = 6; lim.ratio.value = 12; lim.attack.value = 0.003; lim.release.value = 0.12;
+    master.connect(lim); lim.connect(dest);
+    const BUZZ = 5, H = 200, re = new Float32Array(H + 1), im = new Float32Array(H + 1);
+    for (let n = 1; n <= H; n++) im[n] = 1 / Math.sqrt(n);
+    const osc = ctx.createOscillator(); osc.setPeriodicWave(ctx.createPeriodicWave(re, im)); osc.frequency.value = 110; osc.start();
+    const nbuf = noiseBuffer(ctx, 2), nz = noiseSrc(ctx, nbuf), hissK = Math.sqrt(ctx.sampleRate / 2 / 2950);
+    const buzzG = ctx.createGain(), hissG = ctx.createGain(), car = ctx.createGain();
+    buzzG.gain.value = BUZZ; hissG.gain.value = 0; osc.connect(buzzG); nz.connect(hissG); buzzG.connect(car); hissG.connect(car);
+    const filt = bands.map((b) => bandFilter(ctx, b, 1));
+    const keys = filt.map((f) => { const kg = ctx.createGain(), eq = ctx.createGain(); kg.gain.value = 0; car.connect(f.in); f.out.connect(kg); kg.connect(eq); eq.connect(master); return { kg, eq }; });
+    const bnz = noiseSrc(ctx, noiseBuffer(ctx, 1.5));
+    // a stop key excites its filters directly (not through the band keys, which stay closed): own filter copies feed each band's output stage
+    const stops = STOP_SETS.map((set) => { const bg = ctx.createGain(); bg.gain.value = 0; bnz.connect(bg); set.forEach((b) => { const f = bandFilter(ctx, bands[b], 1); bg.connect(f.in); f.out.connect(keys[b].eq); }); return bg; });
+    const T = (t) => (t == null ? ctx.currentTime : t);
+    return {
+      keys: 10, stops: 3,
+      setKey(i, on, t) { keys[i].kg.gain.setTargetAtTime(on ? 1 : 0, T(t), 0.008); },
+      burst(k, t, level) { const bg = stops[k], t0 = T(t), a = (level == null ? 6 : level) * hissK; bg.gain.setValueAtTime(0, t0); bg.gain.linearRampToValueAtTime(a, t0 + 0.002); bg.gain.setTargetAtTime(0, t0 + 0.004, 0.007); },
+      setSource(mode, t) { buzzG.gain.setTargetAtTime(mode === "hiss" ? 0 : BUZZ, T(t), 0.006); hissG.gain.setTargetAtTime(mode === "hiss" ? hissK : 0, T(t), 0.006); },
+      setPitch(hz, t, tc) { osc.frequency.setTargetAtTime(hz, T(t), tc || 0.03); },
+      master
+    };
+  }
+
+  g.VocoderEngine = { voderTV, STOP_SETS, voder, SR, render, envelopes, demo };
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>
+/* Talking Voder: phrase -> phonemes -> a score of key presses (20 ms cells) -> offline render. Pure except renderScore. */
+(function (g) {
+  "use strict";
+  const DT = 0.02;
+  const ROWS = 13; // 0..9 band keys, 10..12 stop keys (P/B, T/D, K/G)
+
+  // First three formants (Hz) after Peterson & Barney (1952), typed from memory: unverified.
+  const FORM = { IY: [270, 2290, 3010], IH: [390, 1990, 2550], EH: [530, 1840, 2480], AE: [660, 1720, 2410], AA: [730, 1090, 2440], AO: [570, 840, 2410], UH: [440, 1020, 2240], UW: [300, 870, 2240], AH: [640, 1190, 2390], ER: [490, 1350, 1690] };
+  const DIPH = { EY: ["EH", "IY"], AY: ["AA", "IY"], OW: ["AO", "UW"], AW: ["AA", "UW"], OY: ["AO", "IY"] };
+
+  // The Voder's ten bands: key 0 = 0-250 Hz, key k = 250+300(k-1) to 250+300k Hz.
+  function bandOf(f) { if (f < 250) return 0; if (f >= 2950) return -1; return Math.min(9, 1 + Math.floor((f - 250) / 300)); }
+  function vowelKeys(v) { const s = new Set(); FORM[v].forEach((f) => { const b = bandOf(f); if (b >= 0) s.add(b); }); return Array.from(s).sort((a, b) => a - b); }
+
+  const FRIC = { S: [[7, 8, 9], 130, 1], Z: [[7, 8, 9], 100, 0], SH: [[5, 6, 7], 130, 1], ZH: [[5, 6, 7], 100, 0], F: [[4, 5, 6, 7, 8, 9], 110, 1], V: [[4, 5, 6, 7, 8, 9], 70, 0], TH: [[5, 6, 7, 8, 9], 110, 1], DH: [[5, 6, 7, 8, 9], 70, 0], HH: [[2, 3, 4, 5, 6], 70, 1] };
+  const NASAL = { M: [[0, 1], 90], N: [[0, 1, 6], 90], NG: [[0, 1, 4], 90] };
+  const GLIDE = { L: ["EH", 80, [1, 4, 8]], R: ["ER", 80, null], W: ["UW", 70, null], Y: ["IY", 70, null] };
+  const STOPK = { P: [0, 0], B: [0, 1], T: [1, 0], D: [1, 1], K: [2, 0], G: [2, 1] };
+
+  function stopSegs(tok) { // closure (voicebar if voiced) then a burst on the stop key
+    const [k, voiced] = STOPK[tok];
+    return [{ keys: voiced ? [0] : [], src: 0, ms: 50 }, { stop: k, keys: [], src: 0, ms: 20 }];
+  }
+
+  function expand(tokens) {
+    const segs = [];
+    tokens.forEach((t) => {
+      if (t === "_") segs.push({ keys: [], src: 0, ms: 80 });
+      else if (t === ",") segs.push({ keys: [], src: 0, ms: 160 });
+      else if (t === ".") segs.push({ keys: [], src: 0, ms: 260 });
+      else if (FORM[t]) segs.push({ keys: vowelKeys(t), src: 0, ms: 150 });
+      else if (DIPH[t]) DIPH[t].forEach((v) => segs.push({ keys: vowelKeys(v), src: 0, ms: 95 }));
+      else if (FRIC[t]) segs.push({ keys: FRIC[t][0], src: FRIC[t][2] ? 1 : 0, ms: FRIC[t][1] });
+      else if (NASAL[t]) segs.push({ keys: NASAL[t][0], src: 0, ms: NASAL[t][1] });
+      else if (GLIDE[t]) segs.push({ keys: GLIDE[t][2] || vowelKeys(GLIDE[t][0]), src: 0, ms: GLIDE[t][1] });
+      else if (STOPK[t]) stopSegs(t).forEach((s) => segs.push(s));
+      else if (t === "CH") { stopSegs("T").forEach((s) => segs.push(s)); segs.push({ keys: FRIC.SH[0], src: 1, ms: 90 }); }
+      else if (t === "JH") { stopSegs("D").forEach((s) => segs.push(s)); segs.push({ keys: FRIC.ZH[0], src: 0, ms: 80 }); }
+    });
+    return segs;
+  }
+
+  const DICT = {
+    the: ["DH", "AH"], a: ["AH"], i: ["AY"], am: ["AE", "M"], is: ["IH", "Z"], of: ["AH", "V"], to: ["T", "UW"], and: ["AE", "N", "D"], no: ["N", "OW"], will: ["W", "IH", "L"],
+    hello: ["HH", "AH", "L", "OW"], voice: ["V", "OY", "S"], speak: ["S", "P", "IY", "K"], speech: ["S", "P", "IY", "CH"], we: ["W", "IY"], see: ["S", "IY"], sea: ["S", "IY"], saw: ["S", "AO"],
+    she: ["SH", "IY"], you: ["Y", "UW"], can: ["K", "AE", "N"], make: ["M", "EY", "K"], talk: ["T", "AO", "K"], walk: ["W", "AO", "K"], bell: ["B", "EH", "L"], labs: ["L", "AE", "B", "Z"],
+    robot: ["R", "OW", "B", "AA", "T"], machine: ["M", "AH", "SH", "IY", "N"], this: ["DH", "IH", "S"], good: ["G", "UH", "D"], world: ["W", "ER", "L", "D"], fair: ["F", "EH", "R"],
+    new: ["N", "UW"], york: ["Y", "AO", "R", "K"], valley: ["V", "AE", "L", "IY"], shadow: ["SH", "AE", "D", "OW"], death: ["D", "EH", "TH"], through: ["TH", "R", "UW"], fear: ["F", "IY", "R"], evil: ["IY", "V", "AH", "L"],
+    yea: ["Y", "EH"], though: ["DH", "OW"], she_: ["SH", "IY"], voder: ["V", "OW", "D", "ER"], vocoder: ["V", "OW", "K", "OW", "D", "ER"], dudley: ["D", "AH", "D", "L", "IY"], it: ["IH", "T"], that: ["DH", "AE", "T"], what: ["W", "AH", "T"], hear: ["HH", "IY", "R"], me: ["M", "IY"]
+  };
+  // Letter-to-sound fallback: crude English-ish rules, longest match first. Uppercase vowel = long vowel (magic e).
+  const RULES = [["tch", ["CH"]], ["igh", ["AY"]], ["sh", ["SH"]], ["ch", ["CH"]], ["th", ["TH"]], ["ph", ["F"]], ["ng", ["NG"]], ["ck", ["K"]], ["wh", ["W"]], ["qu", ["K", "W"]],
+    ["ee", ["IY"]], ["ea", ["IY"]], ["oo", ["UW"]], ["ai", ["EY"]], ["ay", ["EY"]], ["oa", ["OW"]], ["ow", ["OW"]], ["ou", ["AW"]], ["oi", ["OY"]], ["oy", ["OY"]],
+    ["ar", ["AA", "R"]], ["er", ["ER"]], ["ir", ["ER"]], ["ur", ["ER"]], ["or", ["AO", "R"]],
+    ["A", ["EY"]], ["E", ["IY"]], ["I", ["AY"]], ["O", ["OW"]], ["U", ["UW"]],
+    ["a", ["AE"]], ["b", ["B"]], ["c", ["K"]], ["d", ["D"]], ["e", ["EH"]], ["f", ["F"]], ["g", ["G"]], ["h", ["HH"]], ["i", ["IH"]], ["j", ["JH"]], ["k", ["K"]], ["l", ["L"]], ["m", ["M"]],
+    ["n", ["N"]], ["o", ["AA"]], ["p", ["P"]], ["q", ["K"]], ["r", ["R"]], ["s", ["S"]], ["t", ["T"]], ["u", ["AH"]], ["v", ["V"]], ["w", ["W"]], ["x", ["K", "S"]], ["y", ["Y"]], ["z", ["Z"]]];
+  function g2p(word) {
+    const w0 = word.toLowerCase().replace(/[^a-z]/g, "");
+    if (DICT[w0]) return DICT[w0].slice();
+    let w = w0.replace(/([aeiou])([bcdfghjklmnpqrstvwxz])e$/, (m, v, c) => v.toUpperCase() + c);
+    const out = []; let i = 0;
+    while (i < w.length) {
+      let hit = null;
+      for (const [pat, ph] of RULES) if (w.startsWith(pat, i)) { hit = [pat, ph]; break; }
+      if (hit) { out.push(...hit[1]); i += hit[0].length; } else i++;
+    }
+    return out;
+  }
+  function phonemize(text) {
+    const toks = [], parts = String(text).match(/[a-z']+|[,.!?;:]/gi) || [];
+    parts.forEach((p) => {
+      if (/^[,;:]$/.test(p)) { toks.push(","); return; }
+      if (/^[.!?]$/.test(p)) { toks.push("."); return; }
+      if (toks.length && toks[toks.length - 1] !== "_" && toks[toks.length - 1] !== "," && toks[toks.length - 1] !== ".") toks.push("_");
+      toks.push(...g2p(p));
+    });
+    return toks;
+  }
+
+  /** opts: {f0: base Hz, intonation: 'statement'|'question'|'flat', speed: multiplier on durations (1 = normal)} */
+  function compile(tokens, opts) {
+    opts = opts || {}; const speed = opts.speed || 1, base = opts.f0 || 110, into = opts.intonation || "statement";
+    const segs = expand(tokens), counts = segs.map((s) => Math.max(1, Math.round((s.ms * speed) / (DT * 1000))));
+    const n = counts.reduce((a, b) => a + b, 0) + 1;
+    const cells = Array.from({ length: ROWS }, () => new Uint8Array(n)), src = new Uint8Array(n), f0 = new Float32Array(n);
+    let c = 0;
+    segs.forEach((s, i) => {
+      for (let k = 0; k < counts[i]; k++) {
+        s.keys.forEach((r) => { cells[r][c + k] = 1; }); src[c + k] = s.src;
+        if (s.stop != null && k === 0) cells[10 + s.stop][c] = 1;
+      }
+      c += counts[i];
+    });
+    for (let i = 0; i < n; i++) {
+      const u = i / Math.max(1, n - 1);
+      let r = 1.12 - 0.28 * u;
+      if (into === "question" && u > 0.7) r = 1.12 - 0.28 * 0.7 + ((u - 0.7) / 0.3) * 0.55;
+      if (into === "flat") r = 1;
+      f0[i] = base * r;
+    }
+    return { n, dt: DT, cells, src, f0, tokens: tokens.slice() };
+  }
+
+  function hash(sc) { // FNV-1a over cells, source and rounded pitch
+    let h = 2166136261 >>> 0; const mix = (v) => { h ^= v & 255; h = Math.imul(h, 16777619) >>> 0; };
+    sc.cells.forEach((row) => row.forEach(mix)); sc.src.forEach(mix); sc.f0.forEach((v) => mix(Math.round(v)));
+    return h.toString(16);
+  }
+
+  async function renderScore(sc, E, sr) {
+    sr = sr || E.SR; const tail = 0.35, len = Math.ceil((sc.n * sc.dt + tail) * sr);
+    const ctx = new OfflineAudioContext(1, len, sr), v = E.voderTV(ctx, ctx.destination);
+    v.setSource("buzz", 0); v.setPitch(sc.f0[0], 0, 0.001);
+    const state = new Uint8Array(10); let src = 0;
+    for (let c = 0; c < sc.n; c++) {
+      const t = c * sc.dt;
+      if (sc.src[c] !== src) { src = sc.src[c]; v.setSource(src ? "hiss" : "buzz", t); }
+      v.setPitch(sc.f0[c], t, 0.02);
+      for (let r = 0; r < 10; r++) if (sc.cells[r][c] !== state[r]) { state[r] = sc.cells[r][c]; v.setKey(r, !!state[r], t); }
+      for (let k = 0; k < 3; k++) if (sc.cells[10 + k][c] && (c === 0 || !sc.cells[10 + k][c - 1])) v.burst(k, t);
+    }
+    for (let r = 0; r < 10; r++) if (state[r]) v.setKey(r, false, sc.n * sc.dt);
+    const out = await ctx.startRendering(), d = new Float32Array(out.getChannelData(0));
+    let m = 0; for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > m) m = a; }
+    if (m > 1e-9) for (let i = 0; i < d.length; i++) d[i] *= 0.89 / m;
+    const ob = new AudioBuffer({ length: d.length, numberOfChannels: 1, sampleRate: sr }); ob.copyToChannel(d, 0); return ob;
+  }
+
+  g.VoderScore = { DT, ROWS, FORM, bandOf, vowelKeys, expand, g2p, phonemize, compile, hash, renderScore, STOPK, FRIC, NASAL };
+  if (typeof module !== "undefined") module.exports = g.VoderScore;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>
+(function () {
+  "use strict";
+  const C = VocoderCore, E = VocoderEngine, SC = VoderScore;
+  const $ = (id) => document.getElementById(id);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const status = (t) => { $("status").textContent = t; };
+  const CW = 8, RH = 18, PH = 44, GRID_TOP = PH, WRIST_Y = PH + 13 * RH, H = PH + 14 * RH;
+  const S = { score: null, buf: null, dirty: true, play: null };
+
+  const opts = () => ({ f0: +$("f0").value, speed: 1 / +$("sp").value, intonation: $("into").value });
+  function setScoreFromTokens(tokens) { S.score = SC.compile(tokens, opts()); S.dirty = true; S.buf = null; draw(0); info(); }
+  function fromText() { const tok = SC.phonemize($("txt").value); $("ph").value = tok.join(" "); setScoreFromTokens(tok); }
+  function fromPhonemes() { const tok = $("ph").value.trim().toUpperCase().split(/\s+/).filter(Boolean); setScoreFromTokens(tok); }
+  function info() { $("hdTxt").textContent = $("txt").value || "score"; $("hdInfo").textContent = (S.score.n * S.score.dt).toFixed(2) + " s, " + S.score.n + " cells of 20 ms"; }
+  function syncLabels() { $("vF0").textContent = $("f0").value + " Hz"; $("vSp").textContent = (+$("sp").value).toFixed(1) + "x"; }
+  let tm = 0; const later = (fn) => { clearTimeout(tm); tm = setTimeout(fn, 200); };
+  $("txt").addEventListener("input", () => later(fromText));
+  $("ph").addEventListener("input", () => later(fromPhonemes));
+  ["f0", "sp", "into"].forEach((id) => $(id).addEventListener("input", () => { syncLabels(); later(() => { S.score = SC.compile(S.score.tokens, opts()); S.dirty = true; S.buf = null; draw(0); info(); }); }));
+
+  // ---- roll drawing and editing
+  const LAB = ["0-250", "250-550", "550-850", "850-1150", "1150-1450", "1450-1750", "1750-2050", "2050-2350", "2350-2650", "2650-2950", "P B", "T D", "K G"];
+  function rowY(r) { return GRID_TOP + (r < 10 ? 9 - r : r) * RH; } // band rows top = high band, stop rows 10..12 below
+  function draw(playhead) {
+    const sc = S.score; if (!sc) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1), c = $("rc"), l = $("rl");
+    const w = sc.n * CW; c.style.width = w + "px"; c.style.height = H + "px"; l.style.height = H + "px"; l.style.width = "64px";
+    c.width = Math.round(w * dpr); c.height = Math.round(H * dpr); l.width = Math.round(64 * dpr); l.height = Math.round(H * dpr);
+    const panel = css("--panel"), accent = css("--accent"), line = css("--line"), mute = css("--mute"), ink = css("--ink"), hiss = css("--hiss");
+    let g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = panel; g.fillRect(0, 0, w, H);
+    g.strokeStyle = line; g.lineWidth = 1;
+    for (let r = 0; r < 14; r++) { const y = GRID_TOP + r * RH + 0.5; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    for (let k = 0; k <= sc.n; k += 5) { const x = k * CW + 0.5; g.globalAlpha = k % 25 === 0 ? 1 : 0.35; g.beginPath(); g.moveTo(x, GRID_TOP); g.lineTo(x, H); g.stroke(); } g.globalAlpha = 1;
+    g.fillStyle = accent;
+    for (let r = 0; r < 13; r++) for (let k = 0; k < sc.n; k++) if (sc.cells[r][k]) { const y = rowY(r); g.globalAlpha = r >= 10 ? 1 : 0.9; g.fillRect(k * CW + 1, y + 2, CW - 1, RH - 3); }
+    g.globalAlpha = 1;
+    for (let k = 0; k < sc.n; k++) { g.fillStyle = sc.src[k] ? hiss : accent; g.fillRect(k * CW + 1, WRIST_Y + 3, CW - 1, RH - 6); }
+    // pitch line
+    g.strokeStyle = ink; g.lineWidth = 2; g.beginPath();
+    for (let k = 0; k < sc.n; k++) { const y = PH - 6 - ((sc.f0[k] - 60) / 200) * (PH - 12); k ? g.lineTo(k * CW + CW / 2, y) : g.moveTo(CW / 2, y); } g.stroke();
+    if (playhead > 0) { g.strokeStyle = ink; g.lineWidth = 2; const x = (playhead / sc.dt) * CW; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    g = l.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = panel; g.fillRect(0, 0, 64, H);
+    g.fillStyle = mute; g.font = "10px " + css("--f-mono"); g.textBaseline = "middle";
+    for (let r = 0; r < 13; r++) g.fillText(LAB[r], 4, rowY(r) + RH / 2 + 0.5);
+    g.fillText("wrist", 4, WRIST_Y + RH / 2); g.fillText("pitch Hz", 4, 12);
+  }
+  function hit(e) {
+    const rc = $("rc").getBoundingClientRect(), x = e.clientX - rc.left, y = e.clientY - rc.top, col = Math.floor(x / CW);
+    if (col < 0 || col >= S.score.n) return null;
+    if (y >= WRIST_Y && y < WRIST_Y + RH) return { col, row: "wrist" };
+    if (y >= GRID_TOP && y < GRID_TOP + 13 * RH) { const i = Math.floor((y - GRID_TOP) / RH); return { col, row: i < 10 ? 9 - i : i }; }
+    return null;
+  }
+  let paint = null;
+  function apply(h) { const sc = S.score; if (!h) return; if (h.row === "wrist") sc.src[h.col] = paint; else sc.cells[h.row][h.col] = paint; S.dirty = true; S.buf = null; draw(0); }
+  $("rc").addEventListener("pointerdown", (e) => { const h = hit(e); if (!h) return; $("rc").setPointerCapture(e.pointerId); const sc = S.score; paint = h.row === "wrist" ? 1 - sc.src[h.col] : 1 - sc.cells[h.row][h.col]; apply(h); });
+  $("rc").addEventListener("pointermove", (e) => { if (paint == null) return; apply(hit(e)); });
+  ["pointerup", "pointercancel"].forEach((n) => $("rc").addEventListener(n, () => { paint = null; }));
+
+  // ---- playback of the rendered score
+  let ac = null;
+  function stopPlay() { if (S.play) { try { S.play.src.stop(); } catch (e) {} cancelAnimationFrame(S.play.raf); S.play = null; } $("speak").setAttribute("aria-pressed", "false"); draw(0); }
+  async function ensureBuf() { if (S.buf && !S.dirty) return S.buf; status("rendering..."); const t0 = performance.now(); S.buf = await SC.renderScore(S.score, E); S.dirty = false; status("rendered " + S.buf.duration.toFixed(2) + " s in " + Math.round(performance.now() - t0) + " ms"); window.__tvRendered = (window.__tvRendered || 0) + 1; return S.buf; }
+  $("speak").onclick = async () => {
+    stopPlay(); const buf = await ensureBuf();
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) { status("Audio is not available here."); return; }
+    const src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination); const t0 = ac.currentTime; src.start();
+    const st = { src, raf: 0 }; S.play = st; $("speak").setAttribute("aria-pressed", "true");
+    const tick = () => { if (S.play !== st) return; const t = ac.currentTime - t0; if (t >= buf.duration) { stopPlay(); return; } draw(t); const x = (t / S.score.dt) * CW, sc = $("rs"); if (x > sc.scrollLeft + sc.clientWidth - 30 || x < sc.scrollLeft) sc.scrollLeft = Math.max(0, x - 40); st.raf = requestAnimationFrame(tick); };
+    src.onended = () => { if (S.play === st) stopPlay(); }; tick();
+  };
+  $("stop").onclick = stopPlay;
+  /*DL*/ if ($("dl")) $("dl").onclick = async () => {
+    const buf = await ensureBuf(), url = URL.createObjectURL(new Blob([C.wavEncode(buf.getChannelData(0), buf.sampleRate)], { type: "audio/wav" }));
+    const a = document.createElement("a"); a.href = url; a.download = "talking-voder.wav"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }; /*/DL*/
+
+  // ---- live keys
+  let V = null, vac = null, wrist = false;
+  const BKEY = ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"], SKEY = ["z", "x", "c"], keyEls = [], stopEls = [];
+  const edges = C.dudleyBands();
+  function start() {
+    if (V) { if (vac.state === "suspended") vac.resume(); return true; }
+    try { vac = new (window.AudioContext || window.webkitAudioContext)(); vac.resume(); V = E.voderTV(vac, vac.destination); V.setPitch(+$("pedal").value); window.__voder = V; return true; }
+    catch (e) { status("Audio is not available here."); return false; }
+  }
+  const bandOn = (i, on) => { if (on && !start()) return; keyEls[i].classList.toggle("on", on); if (V) V.setKey(i, on); };
+  const stopOn = (k, on) => { if (on && !start()) return; stopEls[k].classList.toggle("on", on); if (on && V) V.burst(k); };
+  function mk(parent, label, sub, cb, list) {
+    const k = document.createElement("div"); k.className = "key"; k.innerHTML = "<b>" + label + "</b><span>" + sub + "</span>";
+    k.addEventListener("pointerdown", (e) => { k.setPointerCapture(e.pointerId); cb(true); e.preventDefault(); });
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach((n) => k.addEventListener(n, () => cb(false)));
+    parent.appendChild(k); list.push(k);
+  }
+  edges.forEach((b, i) => mk($("keys"), i + 1, BKEY[i].toUpperCase(), (on) => bandOn(i, on), keyEls));
+  ["P B", "T D", "K G"].forEach((s, k) => mk($("stopkeys"), s, SKEY[k].toUpperCase(), (on) => stopOn(k, on), stopEls));
+  function setWrist(h) { wrist = h; $("wrist").setAttribute("aria-pressed", h); $("wrist").textContent = "Wrist bar: " + (h ? "hiss" : "buzz"); if (V) V.setSource(h ? "hiss" : "buzz"); }
+  $("wrist").onclick = () => { start(); setWrist(!wrist); };
+  $("pedal").addEventListener("input", () => { $("vPed").textContent = $("pedal").value + " Hz"; if (V) V.setPitch(+$("pedal").value); });
+  window.addEventListener("keydown", (e) => {
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return; const t = e.target && e.target.tagName; if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+    if (e.key === " ") { start(); setWrist(true); e.preventDefault(); return; }
+    const k = e.key.toLowerCase(), i = BKEY.indexOf(k), s = SKEY.indexOf(k);
+    if (i >= 0) { bandOn(i, true); e.preventDefault(); } else if (s >= 0) { stopOn(s, true); e.preventDefault(); }
+  });
+  window.addEventListener("keyup", (e) => { if (e.key === " ") { setWrist(false); return; } const k = e.key.toLowerCase(), i = BKEY.indexOf(k), s = SKEY.indexOf(k); if (i >= 0) bandOn(i, false); if (s >= 0) stopOn(s, false); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => draw(0));
+  new MutationObserver(() => draw(0)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  window.addEventListener("resize", () => draw(0));
+  window.__tv = { S, SC, E, C, fromText, fromPhonemes, ensureBuf, opts };
+  syncLabels(); fromText(); window.__tvReady = true;
+})();
+</script>

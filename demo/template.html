@@ -1,0 +1,249 @@
+<title>Talking Voder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: piano roll of key presses on top (the score a 1939 operator played), phrase box, live keys, sources. Sibling of the Dudley Vocoder. */
+  :root {
+    --bg: #e9eef0; --panel: #f6f9fa; --ink: #13222b; --mute: #55666f; --line: #c3d0d6; --accent: #0a5f86; --accent-ink: #ffffff; --lamp: #b25e00; --hiss: #8a4b00;
+    --f-display: "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
+    --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0d1519; --panel: #141f25; --ink: #dbe6ea; --mute: #8ea3ac; --line: #28383f; --accent: #f0b447; --accent-ink: #1a1203; --lamp: #f0b447; --hiss: #6fb6d4; color-scheme: dark; } }
+  :root[data-theme="dark"] { --bg: #0d1519; --panel: #141f25; --ink: #dbe6ea; --mute: #8ea3ac; --line: #28383f; --accent: #f0b447; --accent-ink: #1a1203; --lamp: #f0b447; --hiss: #6fb6d4; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); padding-block: 20px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  main { max-width: 980px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font: 700 clamp(34px, 7vw, 54px)/0.95 var(--f-display); margin: 0; text-transform: uppercase; text-wrap: balance; }
+  h2 { font: 600 13px/1 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); margin: 0 0 12px; }
+  .sub { color: var(--mute); margin: 8px 0 0; max-width: 62ch; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; min-width: 0; }
+  .scope { padding: 0; overflow: hidden; }
+  .scope-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); font: 12px var(--f-mono); color: var(--mute); }
+  .scope-head b { color: var(--ink); font-weight: 500; }
+  .roll { display: flex; }
+  .roll canvas { display: block; flex: none; touch-action: pan-x; }
+  #rl { width: 64px; border-right: 1px solid var(--line); }
+  #rs { overflow-x: auto; flex: 1; min-width: 0; }
+  #rc { cursor: crosshair; touch-action: none; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button, select, input[type=text], input[type=file]::file-selector-button { font: 500 14px var(--f-body); border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 4px; padding: 9px 14px; }
+  button, select, input[type=file]::file-selector-button { cursor: pointer; }
+  button:hover, select:hover, input[type=text]:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button[aria-pressed=true] { outline: 2px solid var(--accent); outline-offset: 1px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input[type=text] { width: 100%; font: 400 16px var(--f-body); }
+  input.mono { font: 400 13px var(--f-mono); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px 24px; margin-top: 14px; }
+  label.ctl, .ctl { display: grid; gap: 4px; font-size: 13px; color: var(--mute); }
+  .ctl .v { font: 13px var(--f-mono); color: var(--ink); display: flex; justify-content: space-between; gap: 8px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .note { font-size: 12.5px; color: var(--mute); }
+  .flag { font: 11px var(--f-mono); color: var(--lamp); border: 1px solid var(--lamp); border-radius: 3px; padding: 1px 5px; margin-left: 6px; white-space: nowrap; }
+  #status { font: 12px var(--f-mono); color: var(--mute); min-height: 18px; }
+  .keys { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; align-items: end; touch-action: none; }
+  .keys.stops { grid-template-columns: repeat(3, minmax(0, 90px)); margin-top: 10px; }
+  .key { height: 130px; padding: 8px 2px; border-radius: 4px 4px 18px 18px; clip-path: polygon(8% 0, 92% 0, 100% 100%, 0 100%); display: grid; align-content: space-between; justify-items: center;
+    background: color-mix(in srgb, var(--mute) 24%, var(--panel)); color: var(--ink); font: 11px var(--f-mono); user-select: none; -webkit-user-select: none; touch-action: none; }
+  .keys.stops .key { height: 70px; }
+  .key b { font: 600 18px var(--f-display); }
+  .key.on { background: var(--accent); color: var(--accent-ink); }
+  .pedal { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-top: 14px; }
+  .pedal input[type=range] { width: min(100%, 260px); }
+  ul.cites { margin: 0; padding-left: 18px; display: grid; gap: 8px; font-size: 14px; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .two > div { min-width: 0; }
+  cite { font-style: normal; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<main>
+  <header>
+    <h1>Talking Voder</h1>
+    <p class="sub">The 1939 Bell Labs speaking machine as a score. Type a phrase and it becomes key presses: ten band keys, three stop-consonant keys, a buzz or hiss switch and a pitch line. Edit any cell, then play it.</p>
+  </header>
+
+  <section class="panel scope" aria-label="Key score">
+    <div class="scope-head"><span><b id="hdTxt">score</b></span><span id="hdInfo"></span></div>
+    <div class="roll"><canvas id="rl" aria-hidden="true"></canvas><div id="rs"><canvas id="rc" role="img" aria-label="Piano roll of key presses over time. Click or drag cells to toggle them."></canvas></div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Phrase</h2>
+    <label class="ctl"><span>Type something</span><input id="txt" type="text" value="Hello, we see the sea." autocomplete="off" spellcheck="false"></label>
+    <label class="ctl" style="margin-top:12px"><span>Phonemes (ARPAbet, editable)<span class="flag">crude rules</span></span><input id="ph" class="mono" type="text" autocomplete="off" spellcheck="false"></label>
+    <div class="grid">
+      <label class="ctl"><span class="v"><span>Pitch pedal (base)</span><span id="vF0">110 Hz</span></span><input id="f0" type="range" min="70" max="220" step="1" value="110"></label>
+      <label class="ctl"><span class="v"><span>Speed</span><span id="vSp">1.0x</span></span><input id="sp" type="range" min="0.6" max="2" step="0.1" value="1"></label>
+      <label class="ctl"><span>Intonation</span><select id="into"><option value="statement">Statement (falls)</option><option value="question">Question (rises)</option><option value="flat">Flat</option></select></label>
+    </div>
+    <div class="row" style="margin-top:16px">
+      <button id="speak" class="primary">Speak</button>
+      <button id="stop">Stop</button>
+      <!--DL--><button id="dl">Save WAV</button><!--/DL-->
+      <span id="status" role="status"></span>
+    </div>
+    <p class="note" style="margin:10px 0 0">Roll rows: ten band keys (top is 2650 to 2950 Hz), then the stop keys P/B, T/D, K/G, then the wrist bar (amber buzz, blue hiss) and the pitch line. Drag across cells to paint or erase.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Play it yourself</h2>
+    <p class="note" style="margin:0 0 12px">Ten band keys, three stop keys, wrist bar, pedal. Computer keys A S D F G H J K L ; for the bands, Z X C for the stops, hold Space for hiss.</p>
+    <div class="keys" id="keys" role="group" aria-label="Ten band keys"></div>
+    <div class="keys stops" id="stopkeys" role="group" aria-label="Three stop keys"></div>
+    <div class="pedal">
+      <button id="wrist" aria-pressed="false">Wrist bar: buzz</button>
+      <label class="ctl" style="min-width:220px"><span class="v"><span>Pitch pedal</span><span id="vPed">110 Hz</span></span><input id="pedal" type="range" min="70" max="250" step="1" value="110"></label>
+    </div>
+  </section>
+
+  <section class="panel two">
+    <div>
+      <h2>Checked and not checked</h2>
+      <p class="note" style="margin:0 0 8px">From the CCRMA page on the Voder: ten fingers set the band gains, three further keys gave transient excitation of selected filters for stop consonants, a wrist bar chose buzz or hiss, a foot pedal set pitch.</p>
+      <p class="note" style="margin:0">Not documented there, so assumed here: which filters each stop key excites, the formant values, the letter rules, all timings. The Voder could not buzz and hiss together, so voiced fricatives are buzz only. Nobody has listened to this.</p>
+    </div>
+    <div>
+      <h2>Measured</h2>
+      <p class="note" style="margin:0">Each band key sounds in its own band. Stop bursts land on their cell within a few milliseconds and the T burst is brighter than K, which is brighter than P. The same phrase always makes the same score and the same audio.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Sources</h2>
+    <ul class="cites">
+      <li><cite>Smith, J. O. Voder. In <i>Spectral Audio Signal Processing</i>, CCRMA, Stanford University.</cite> https://ccrma.stanford.edu/~jos/sasp/Voder.html. Key, stop key, wrist bar and pedal description.</li>
+      <li><cite>Dudley, H. (1940). The carrier nature of speech. <i>Bell System Technical Journal</i>, 19(4), 495&ndash;515.</cite> Ten bands, buzz and hiss sources.</li>
+      <li><cite>Peterson, G. E. &amp; Barney, H. L. (1952). Control methods used in a study of the vowels. <i>Journal of the Acoustical Society of America</i>, 24(2), 175&ndash;184.</cite> Formant values here are typed from memory and not checked.</li>
+    </ul>
+  </section>
+</main>
+
+<script>
+/*CORE*/
+</script>
+<script>
+/*ENGINE*/
+</script>
+<script>
+/*SCORE*/
+</script>
+<script>
+(function () {
+  "use strict";
+  const C = VocoderCore, E = VocoderEngine, SC = VoderScore;
+  const $ = (id) => document.getElementById(id);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const status = (t) => { $("status").textContent = t; };
+  const CW = 8, RH = 18, PH = 44, GRID_TOP = PH, WRIST_Y = PH + 13 * RH, H = PH + 14 * RH;
+  const S = { score: null, buf: null, dirty: true, play: null };
+
+  const opts = () => ({ f0: +$("f0").value, speed: 1 / +$("sp").value, intonation: $("into").value });
+  function setScoreFromTokens(tokens) { S.score = SC.compile(tokens, opts()); S.dirty = true; S.buf = null; draw(0); info(); }
+  function fromText() { const tok = SC.phonemize($("txt").value); $("ph").value = tok.join(" "); setScoreFromTokens(tok); }
+  function fromPhonemes() { const tok = $("ph").value.trim().toUpperCase().split(/\s+/).filter(Boolean); setScoreFromTokens(tok); }
+  function info() { $("hdTxt").textContent = $("txt").value || "score"; $("hdInfo").textContent = (S.score.n * S.score.dt).toFixed(2) + " s, " + S.score.n + " cells of 20 ms"; }
+  function syncLabels() { $("vF0").textContent = $("f0").value + " Hz"; $("vSp").textContent = (+$("sp").value).toFixed(1) + "x"; }
+  let tm = 0; const later = (fn) => { clearTimeout(tm); tm = setTimeout(fn, 200); };
+  $("txt").addEventListener("input", () => later(fromText));
+  $("ph").addEventListener("input", () => later(fromPhonemes));
+  ["f0", "sp", "into"].forEach((id) => $(id).addEventListener("input", () => { syncLabels(); later(() => { S.score = SC.compile(S.score.tokens, opts()); S.dirty = true; S.buf = null; draw(0); info(); }); }));
+
+  // ---- roll drawing and editing
+  const LAB = ["0-250", "250-550", "550-850", "850-1150", "1150-1450", "1450-1750", "1750-2050", "2050-2350", "2350-2650", "2650-2950", "P B", "T D", "K G"];
+  function rowY(r) { return GRID_TOP + (r < 10 ? 9 - r : r) * RH; } // band rows top = high band, stop rows 10..12 below
+  function draw(playhead) {
+    const sc = S.score; if (!sc) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1), c = $("rc"), l = $("rl");
+    const w = sc.n * CW; c.style.width = w + "px"; c.style.height = H + "px"; l.style.height = H + "px"; l.style.width = "64px";
+    c.width = Math.round(w * dpr); c.height = Math.round(H * dpr); l.width = Math.round(64 * dpr); l.height = Math.round(H * dpr);
+    const panel = css("--panel"), accent = css("--accent"), line = css("--line"), mute = css("--mute"), ink = css("--ink"), hiss = css("--hiss");
+    let g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = panel; g.fillRect(0, 0, w, H);
+    g.strokeStyle = line; g.lineWidth = 1;
+    for (let r = 0; r < 14; r++) { const y = GRID_TOP + r * RH + 0.5; g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    for (let k = 0; k <= sc.n; k += 5) { const x = k * CW + 0.5; g.globalAlpha = k % 25 === 0 ? 1 : 0.35; g.beginPath(); g.moveTo(x, GRID_TOP); g.lineTo(x, H); g.stroke(); } g.globalAlpha = 1;
+    g.fillStyle = accent;
+    for (let r = 0; r < 13; r++) for (let k = 0; k < sc.n; k++) if (sc.cells[r][k]) { const y = rowY(r); g.globalAlpha = r >= 10 ? 1 : 0.9; g.fillRect(k * CW + 1, y + 2, CW - 1, RH - 3); }
+    g.globalAlpha = 1;
+    for (let k = 0; k < sc.n; k++) { g.fillStyle = sc.src[k] ? hiss : accent; g.fillRect(k * CW + 1, WRIST_Y + 3, CW - 1, RH - 6); }
+    // pitch line
+    g.strokeStyle = ink; g.lineWidth = 2; g.beginPath();
+    for (let k = 0; k < sc.n; k++) { const y = PH - 6 - ((sc.f0[k] - 60) / 200) * (PH - 12); k ? g.lineTo(k * CW + CW / 2, y) : g.moveTo(CW / 2, y); } g.stroke();
+    if (playhead > 0) { g.strokeStyle = ink; g.lineWidth = 2; const x = (playhead / sc.dt) * CW; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+    g = l.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = panel; g.fillRect(0, 0, 64, H);
+    g.fillStyle = mute; g.font = "10px " + css("--f-mono"); g.textBaseline = "middle";
+    for (let r = 0; r < 13; r++) g.fillText(LAB[r], 4, rowY(r) + RH / 2 + 0.5);
+    g.fillText("wrist", 4, WRIST_Y + RH / 2); g.fillText("pitch Hz", 4, 12);
+  }
+  function hit(e) {
+    const rc = $("rc").getBoundingClientRect(), x = e.clientX - rc.left, y = e.clientY - rc.top, col = Math.floor(x / CW);
+    if (col < 0 || col >= S.score.n) return null;
+    if (y >= WRIST_Y && y < WRIST_Y + RH) return { col, row: "wrist" };
+    if (y >= GRID_TOP && y < GRID_TOP + 13 * RH) { const i = Math.floor((y - GRID_TOP) / RH); return { col, row: i < 10 ? 9 - i : i }; }
+    return null;
+  }
+  let paint = null;
+  function apply(h) { const sc = S.score; if (!h) return; if (h.row === "wrist") sc.src[h.col] = paint; else sc.cells[h.row][h.col] = paint; S.dirty = true; S.buf = null; draw(0); }
+  $("rc").addEventListener("pointerdown", (e) => { const h = hit(e); if (!h) return; $("rc").setPointerCapture(e.pointerId); const sc = S.score; paint = h.row === "wrist" ? 1 - sc.src[h.col] : 1 - sc.cells[h.row][h.col]; apply(h); });
+  $("rc").addEventListener("pointermove", (e) => { if (paint == null) return; apply(hit(e)); });
+  ["pointerup", "pointercancel"].forEach((n) => $("rc").addEventListener(n, () => { paint = null; }));
+
+  // ---- playback of the rendered score
+  let ac = null;
+  function stopPlay() { if (S.play) { try { S.play.src.stop(); } catch (e) {} cancelAnimationFrame(S.play.raf); S.play = null; } $("speak").setAttribute("aria-pressed", "false"); draw(0); }
+  async function ensureBuf() { if (S.buf && !S.dirty) return S.buf; status("rendering..."); const t0 = performance.now(); S.buf = await SC.renderScore(S.score, E); S.dirty = false; status("rendered " + S.buf.duration.toFixed(2) + " s in " + Math.round(performance.now() - t0) + " ms"); window.__tvRendered = (window.__tvRendered || 0) + 1; return S.buf; }
+  $("speak").onclick = async () => {
+    stopPlay(); const buf = await ensureBuf();
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); ac.resume(); } catch (e) { status("Audio is not available here."); return; }
+    const src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination); const t0 = ac.currentTime; src.start();
+    const st = { src, raf: 0 }; S.play = st; $("speak").setAttribute("aria-pressed", "true");
+    const tick = () => { if (S.play !== st) return; const t = ac.currentTime - t0; if (t >= buf.duration) { stopPlay(); return; } draw(t); const x = (t / S.score.dt) * CW, sc = $("rs"); if (x > sc.scrollLeft + sc.clientWidth - 30 || x < sc.scrollLeft) sc.scrollLeft = Math.max(0, x - 40); st.raf = requestAnimationFrame(tick); };
+    src.onended = () => { if (S.play === st) stopPlay(); }; tick();
+  };
+  $("stop").onclick = stopPlay;
+  /*DL*/ if ($("dl")) $("dl").onclick = async () => {
+    const buf = await ensureBuf(), url = URL.createObjectURL(new Blob([C.wavEncode(buf.getChannelData(0), buf.sampleRate)], { type: "audio/wav" }));
+    const a = document.createElement("a"); a.href = url; a.download = "talking-voder.wav"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }; /*/DL*/
+
+  // ---- live keys
+  let V = null, vac = null, wrist = false;
+  const BKEY = ["a", "s", "d", "f", "g", "h", "j", "k", "l", ";"], SKEY = ["z", "x", "c"], keyEls = [], stopEls = [];
+  const edges = C.dudleyBands();
+  function start() {
+    if (V) { if (vac.state === "suspended") vac.resume(); return true; }
+    try { vac = new (window.AudioContext || window.webkitAudioContext)(); vac.resume(); V = E.voderTV(vac, vac.destination); V.setPitch(+$("pedal").value); window.__voder = V; return true; }
+    catch (e) { status("Audio is not available here."); return false; }
+  }
+  const bandOn = (i, on) => { if (on && !start()) return; keyEls[i].classList.toggle("on", on); if (V) V.setKey(i, on); };
+  const stopOn = (k, on) => { if (on && !start()) return; stopEls[k].classList.toggle("on", on); if (on && V) V.burst(k); };
+  function mk(parent, label, sub, cb, list) {
+    const k = document.createElement("div"); k.className = "key"; k.innerHTML = "<b>" + label + "</b><span>" + sub + "</span>";
+    k.addEventListener("pointerdown", (e) => { k.setPointerCapture(e.pointerId); cb(true); e.preventDefault(); });
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach((n) => k.addEventListener(n, () => cb(false)));
+    parent.appendChild(k); list.push(k);
+  }
+  edges.forEach((b, i) => mk($("keys"), i + 1, BKEY[i].toUpperCase(), (on) => bandOn(i, on), keyEls));
+  ["P B", "T D", "K G"].forEach((s, k) => mk($("stopkeys"), s, SKEY[k].toUpperCase(), (on) => stopOn(k, on), stopEls));
+  function setWrist(h) { wrist = h; $("wrist").setAttribute("aria-pressed", h); $("wrist").textContent = "Wrist bar: " + (h ? "hiss" : "buzz"); if (V) V.setSource(h ? "hiss" : "buzz"); }
+  $("wrist").onclick = () => { start(); setWrist(!wrist); };
+  $("pedal").addEventListener("input", () => { $("vPed").textContent = $("pedal").value + " Hz"; if (V) V.setPitch(+$("pedal").value); });
+  window.addEventListener("keydown", (e) => {
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return; const t = e.target && e.target.tagName; if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
+    if (e.key === " ") { start(); setWrist(true); e.preventDefault(); return; }
+    const k = e.key.toLowerCase(), i = BKEY.indexOf(k), s = SKEY.indexOf(k);
+    if (i >= 0) { bandOn(i, true); e.preventDefault(); } else if (s >= 0) { stopOn(s, true); e.preventDefault(); }
+  });
+  window.addEventListener("keyup", (e) => { if (e.key === " ") { setWrist(false); return; } const k = e.key.toLowerCase(), i = BKEY.indexOf(k), s = SKEY.indexOf(k); if (i >= 0) bandOn(i, false); if (s >= 0) stopOn(s, false); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => draw(0));
+  new MutationObserver(() => draw(0)).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  window.addEventListener("resize", () => draw(0));
+  window.__tv = { S, SC, E, C, fromText, fromPhonemes, ensureBuf, opts };
+  syncLabels(); fromText(); window.__tvReady = true;
+})();
+</script>
